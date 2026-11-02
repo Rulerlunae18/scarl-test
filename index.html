@@ -94,4 +94,54 @@ function start() {
   ctx.scale(dpr, dpr);
   ctx.font = `bold ${Math.round(cellH * 0.9)}px "Courier New", monospace`;
   ctx.textAlign = 'center';
-  ctx.textBaseline =
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = COLOR;
+
+  // таблица случайных чисел на каждую колонку (по ней "бегут" символы)
+  const TABLE = 256;
+  const rnd = new Uint16Array(COLS * TABLE);
+  for (let i = 0; i < rnd.length; i++) rnd[i] = (Math.random() * 65535) | 0;
+
+  // у каждой колонки своя скорость и направление
+  const speed = new Float32Array(COLS);
+  const pos = new Float32Array(COLS);
+  for (let c = 0; c < COLS; c++) {
+    const s = SPEED_MIN + Math.random() * (SPEED_MAX - SPEED_MIN);
+    speed[c] = Math.random() < 0.7 ? s : -s * 0.6;
+    pos[c] = Math.random() * TABLE;
+  }
+
+  let last = 0;
+  const step = 1000 / FPS;
+
+  function frame(t) {
+    requestAnimationFrame(frame);
+    if (t - last < step) return;
+    const dt = (t - last) / 1000;
+    last = t;
+
+    // символы бегут
+    for (let c = 0; c < COLS; c++) pos[c] = (pos[c] + speed[c] * dt + TABLE) % TABLE;
+
+    // часть символов случайно меняется
+    const n = (rnd.length * MUTATE) | 0;
+    for (let k = 0; k < n; k++) rnd[(Math.random() * rnd.length) | 0] = (Math.random() * 65535) | 0;
+
+    ctx.clearRect(0, 0, W, H);
+    for (let r = 0; r < rows; r++) {
+      const y = r * cellH + cellH / 2;
+      for (let c = 0; c < COLS; c++) {
+        const L = level[r * COLS + c];
+        if (L === 0) continue;
+        const idx = ((r - Math.floor(pos[c])) % TABLE + TABLE) % TABLE;
+        const pool = POOLS[L];
+        const ch = pool[rnd[c * TABLE + idx] % pool.length];
+        ctx.fillText(ch, c * cellW + cellW / 2, y);
+      }
+    }
+  }
+  requestAnimationFrame(frame);
+}
+</script>
+</body>
+</html>

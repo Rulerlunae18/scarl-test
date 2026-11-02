@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ASCII</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  body { display: flex; align-items: center; justify-content: center; }
+  canvas { display: block; max-width: 100vw; max-height: 100vh; }
+  #err { position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+         color: #ccc; font: 16px monospace; text-align: center; padding: 24px; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="err"></div>
+
+<script>
+// ====== НАСТРОЙКИ ======
+const IMAGE_SRC  = 'image.jpg';  // имя картинки в репозитории
+const COLOR      = '#e01b24';    // ОДИН цвет для всех символов
+const COLS       = 170;          // детализация (больше = чётче, но тяжелее)
+const FPS        = 30;
+const GAMMA      = 0.55;         // <1 осветляет тёмные участки
+const MUTATE     = 0.012;        // доля символов, меняющихся каждый кадр
+const SPEED_MIN  = 2;            // скорость "бега" символов (строк/сек)
+const SPEED_MAX  = 14;
+const CHAR_ASPECT = 0.55;        // ширина/высота символа
+// =======================
+
+// пулы символов по яркости (от тёмного к светлому)
+const POOLS = [
+  [' '],
+  ['.', '`', "'", ','],
+  [':', ';', '-', '~', '"'],
+  ['i', 'l', 'I', '!', '|', '/', '\\'],
+  ['c', 't', '1', 'f', 'x', 'r', 'j', '(', ')'],
+  ['L', 'C', 'J', 'U', 'Y', 'X', 'Z', '?'],
+  ['O', '0', 'Q', '#', '%', '&', 'D'],
+  ['@', 'M', 'W', 'B', '8', '$', 'N']
+];
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const img = new Image();
+
+img.onload = start;
+img.onerror = () => fail('Не удалось загрузить ' + IMAGE_SRC + '. Положи картинку рядом с index.html.');
+img.src = IMAGE_SRC;
+
+function fail(msg) {
+  const e = document.getElementById('err');
+  e.textContent = msg; e.style.display = 'flex';
+}
+
+function start() {
+  const rows = Math.round(COLS * (img.height / img.width) * CHAR_ASPECT);
+
+  // читаем яркость картинки
+  const off = document.createElement('canvas');
+  off.width = COLS; off.height = rows;
+  const octx = off.getContext('2d', { willReadFrequently: true });
+  octx.drawImage(img, 0, 0, COLS, rows);
+  let data;
+  try {
+    data = octx.getImageData(0, 0, COLS, rows).data;
+  } catch (e) {
+    return fail('Браузер блокирует чтение пикселей с file://. Запусти через локальный сервер или GitHub Pages.');
+  }
+
+  // уровни яркости 0..7
+  const lum = new Float32Array(COLS * rows);
+  let max = 0;
+  for (let i = 0; i < lum.length; i++) {
+    const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2];
+    lum[i] = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    if (lum[i] > max) max = lum[i];
+  }
+  const level = new Uint8Array(lum.length);
+  for (let i = 0; i < lum.length; i++) {
+    const v = Math.pow(lum[i] / (max || 1), GAMMA);
+    level[i] = Math.min(POOLS.length - 1, Math.floor(v * POOLS.length));
+  }
+
+  // размеры холста
+  const maxW = Math.min(window.innerWidth, 1600);
+  const cellW = Math.max(4, Math.floor(maxW / COLS));
+  const cellH = Math.round(cellW / CHAR_ASPECT);
+  const W = cellW * COLS, H = cellH * rows;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  ctx.scale(dpr, dpr);
+  ctx.font = `bold ${Math.round(cellH * 0.9)}px "Courier New", monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline =
